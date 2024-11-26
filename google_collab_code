@@ -1,0 +1,94 @@
+import tensorflow as tf
+from tensorflow import keras
+from keras._tf_keras.keras.preprocessing.image import ImageDataGenerator
+from keras._tf_keras.keras.applications import MobileNetV2
+from keras._tf_keras.keras import layers, models
+import matplotlib.pyplot as plt
+import numpy as np
+import os
+
+
+base_dir = '/content/tea sickness dataset'
+img_size = (224, 224)
+batch_size = 32
+
+# Генератори даних
+datagen = ImageDataGenerator(
+    rescale=1.0/255,
+    validation_split=0.2
+)
+
+train_generator = datagen.flow_from_directory(
+    base_dir,
+    target_size=img_size,
+    batch_size=batch_size,
+    class_mode='categorical',
+    subset='training'
+)
+
+val_generator = datagen.flow_from_directory(
+    base_dir,
+    target_size=img_size,
+    batch_size=batch_size,
+    class_mode='categorical',
+    subset='validation'
+)
+
+# Завантаження моделі
+base_model = MobileNetV2(weights='imagenet', include_top=False, input_shape=(224, 224, 3))
+
+# Замороження базових шарів
+base_model.trainable = False
+
+# Додавання класифікаційного шару
+model = models.Sequential([
+    base_model,
+    layers.GlobalAveragePooling2D(),
+    layers.Dense(128, activation='relu'),
+    layers.Dropout(0.3),
+    layers.Dense(8, activation='softmax')  # 8 класів
+])
+
+model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+
+# Навчання
+history = model.fit(
+    train_generator,
+    validation_data=val_generator,
+    epochs=10
+)
+
+# Візуалізація результатів
+plt.plot(history.history['accuracy'], label='Training Accuracy')
+plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
+plt.xlabel('Epoch')
+plt.ylabel('Accuracy')
+plt.legend()
+plt.show()
+
+# Оцінка на тестовій вибірці
+test_generator = datagen.flow_from_directory(
+    base_dir,
+    target_size=img_size,
+    batch_size=batch_size,
+    class_mode='categorical',
+    subset=None
+)
+
+model.evaluate(test_generator)
+
+# Використання моделі
+from tensorflow.keras.preprocessing import image
+import numpy as np
+
+def predict_disease(img_path, model):
+    img = image.load_img(img_path, target_size=img_size)
+    img_array = image.img_to_array(img) / 255.0
+    img_array = tf.expand_dims(img_array, axis=0)
+    predictions = model.predict(img_array)
+    class_names = list(train_generator.class_indices.keys())
+    return class_names[np.argmax(predictions)]
+
+img_path = '/content/listok.jpg'
+result = predict_disease(img_path, model)
+print(f"Predicted disease: {result}")
